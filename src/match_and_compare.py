@@ -112,8 +112,15 @@ def main():
               f"{xu_matched} / {len(xu_to_oa)} ({100 * xu_matched / len(xu_to_oa):.1f}%)")
  
         oa_to_xu["parameter"] = param
+        xu_to_oa["parameter"] = param
+        oa_to_xu["direction"] = "oa_to_xu"
+        xu_to_oa["direction"] = "xu_to_oa"
+        
         oa_to_xu = oa_to_xu.rename(columns = {"location_id": "station_id", "nearest_target_id": "xu_station_id"})
+        xu_to_oa = xu_to_oa.rename(columns = {"nearest_target_id": "station_id", "station_id": "xu_station_id"})
+        
         all_matches.append(oa_to_xu)
+        all_matches.append(xu_to_oa)
  
         # Join matched pairs daily values
         matched_pairs = oa_to_xu[oa_to_xu["matched"]][["station_id", "xu_station_id"]].rename(
