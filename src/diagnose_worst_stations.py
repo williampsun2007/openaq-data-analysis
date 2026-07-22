@@ -1,5 +1,5 @@
 '''
-Diagnoses the worst-disagreeing stations between OpenAQ and Xu et al., for
+Diagnose the worst-disagreeing stations between OpenAQ and Xu et al., for
 both pm25 and o3. For each pollutant, computes each co-located station's mean
 bias, correlation, and number of matched days (from daily_value_comparison.csv),
 filters out stations with too few matched days to be statistically meaningful
