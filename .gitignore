@@ -1,1 +1,4 @@
 .env
+data/daily_value_comparison.csv
+data/openaq_daily_aggregated_2019_window.csv
+data/india_pm25_jan_jun_2026.csv
