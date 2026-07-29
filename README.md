@@ -87,6 +87,7 @@ python src/aggregate_daily_mda8.py
 python src/match_and_compare.py
 python src/diagnose_worst_stations.py
 python src/plot_global_station_map.py
+python src/country_gap_report.py
 ```
 
 Long-running fetch scripts (`fetch_global_hourly_window.py`, `india_hourly_data.py`) write progress to disk incrementally and can be safely re-run — they pick up where a previous run left off rather than starting over, and back off automatically on HTTP 429 (rate limit) responses.
