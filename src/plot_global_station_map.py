@@ -1,10 +1,11 @@
 '''
-Builds interactive global maps comparing OpenAQ and Xu et al. station coverage,
+Builds interactive global maps comparing OpenAQ, Xu et al, and GHOST station coverage,
 one map per pollutant (pm25 and o3). Each station is categorized as:
     - Co-located: matched between OpenAQ and Xu (within 1 km), colored by mean
       bias and outlined in black where correlation > 0.9
     - OpenAQ-only: OpenAQ stations with no nearby Xu match
     - Xu-only: Xu stations with no nearby OpenAQ match
+    - GHOST only: GHOST provided stations not nearby an OpenAQ or Xu station
 
 Bias/correlation values come from the ~41-day Jan 1 - Feb 10, 2019 comparison
 window (daily_value_comparison.csv), not Xu's full 2000-2019 historical record.
@@ -13,6 +14,9 @@ window (daily_value_comparison.csv), not Xu's full 2000-2019 historical record.
 import pandas as pd
 import pyreadr
 import plotly.graph_objects as go
+from sklearn.neighbors import BallTree
+import numpy as np
+import xarray as xr
 
 STATION_MATCHES = "data/station_matches.csv"
 DAILY_VALUE_COMPARISON = "data/daily_value_comparison.csv"
@@ -29,9 +33,80 @@ def load_rds(path):
 def station_corr(group):
     return group["openaq_value"].corr(group["xu_value"])
 
+# Calculate closest station distance and see if its within 1 km
+def has_match_within_1km(points_df, ref_df, lat_col, lon_col, ref_lat_col, ref_lon_col):
+        tree = BallTree(np.radians(ref_df[[ref_lat_col, ref_lon_col]].values), metric = "haversine")
+        dist, _ = tree.query(np.radians(points_df[[lat_col, lon_col]].values), k = 1)
+        return (dist.flatten() * 6371) <= 1
+
 # Read files
 station_matches_df = pd.read_csv(STATION_MATCHES)
 daily_value_comparison_df = pd.read_csv(DAILY_VALUE_COMPARISON)
+
+# Extract GHOST data
+def extract_ghost_component(nc_folder, component, year_months, network_name):
+    """Pulls one component (e.g. pm2p5) across given months from one network's folder."""
+    monthly_dfs = []
+    for ym in year_months:
+        try:
+            ds = xr.open_dataset(f"{nc_folder}/{component}_{ym}.nc")
+            month_df = pd.DataFrame({
+                "value": ds[component].values.flatten(),
+                "value_prefiltered": ds[f"{component}_prefiltered_defaultqa"].values.flatten(),
+                "station_reference": pd.Series(ds["station_reference"].values).repeat(len(ds["time"])).values,
+                "latitude": pd.Series(ds["latitude"].values).repeat(len(ds["time"])).values,
+                "longitude": pd.Series(ds["longitude"].values).repeat(len(ds["time"])).values,
+                "date": list(ds["time"].values) * len(ds["station_reference"]),
+            })
+        
+            month_df["network"] = network_name
+            monthly_dfs.append(month_df)
+            ds.close()
+        except:
+            print("Error in extract_ghost_component")
+            
+    return pd.concat(monthly_dfs, ignore_index = True)
+
+# List of networks from GHOST to add
+networks_to_add = [
+    ("data/GHOST/daily_us_epa/pm2p5", "US_EPA"),
+    ("data/GHOST/daily_canada_naps/pm2p5", "CANADA_NAPS"),
+    ("data/GHOST/daily_chile_sinca/pm2p5", "CHILE_SINCA"),
+    ("data/GHOST/daily_mexico_cdmx/pm2p5", "MEXICO_CDMX"),
+    ("data/GHOST/daily_ebas_emep/pm2p5", "EBAS_EMEP"),
+    ("data/GHOST/daily_uk_air/pm2p5", "UK_AIR")
+]
+
+# Extract ghost information for pm2.5 and o3
+try:
+    ghost_df = pd.read_csv("data/ghost_combined_2019window.csv")
+    ghost_df["date"] = pd.to_datetime(ghost_df["date"])
+except:
+    ghost_df = pd.DataFrame(columns = ["network"])
+    print("CSV doesn't exist yet")
+    
+for folder, name in networks_to_add:
+    if len(ghost_df[ghost_df['network'] == name]) == 0:
+        new_data = extract_ghost_component(folder, "pm2p5", ["201901", "201902"], name)
+        ghost_df = pd.concat([ghost_df, new_data], ignore_index = True)
+        ghost_df = ghost_df[ghost_df['date'] <= "2019-02-10"]
+        
+ghost_df.to_csv("data/ghost_combined_2019window.csv", index = False)
+
+try:
+    ghost_o3_df = pd.read_csv("data/ghost_combined_o3_2019window.csv")
+    ghost_o3_df["date"] = pd.to_datetime(ghost_o3_df["date"])
+except:
+    ghost_o3_df = pd.DataFrame(columns = ["network"])
+    print("CSV doesn't exist yet for o3")    
+    
+for folder, name in networks_to_add:
+    if len(ghost_o3_df[ghost_o3_df['network'] == name]) == 0:
+        new_data = extract_ghost_component(folder.replace("pm2p5", "sconco3"), "sconco3", ["201901", "201902"], name)
+        ghost_o3_df = pd.concat([ghost_o3_df, new_data], ignore_index = True)
+        ghost_o3_df = ghost_o3_df[ghost_o3_df['date'] <= "2019-02-10"]
+        
+ghost_o3_df.to_csv("data/ghost_combined_o3_2019window.csv", index = False)
 
 # Create two maps, one for pm25 and anothe for o3
 for species in ["pm25", "o3"]:
@@ -119,6 +194,33 @@ for species in ["pm25", "o3"]:
         ),
         name = "Xu-only",
     ))
+    
+    # Plot GHOST-only coordinates
+    if species == "pm25":
+        ghost_coords = ghost_df[["station_reference", "latitude", "longitude"]].drop_duplicates(subset = "station_reference")
+        xu_species_coords = xu_pm25_df[["station_id", "lat", "lon"]].drop_duplicates(subset = "station_id")
+    else:
+        ghost_coords = ghost_o3_df[["station_reference", "latitude", "longitude"]].drop_duplicates(subset = "station_reference")
+        xu_species_coords = xu_o3_df[["station_id", "lat", "lon"]].drop_duplicates(subset = "station_id")
+
+    openaq_daily_df = pd.read_csv(OPENAQ_DAILY)
+    openaq_species_df = openaq_daily_df[openaq_daily_df["parameter"] == species]
+    openaq_coords = openaq_species_df[["location_id", "latitude", "longitude"]].drop_duplicates(subset = "location_id")
+    
+    matched_openaq = has_match_within_1km(ghost_coords, openaq_coords, "latitude", "longitude", "latitude", "longitude")
+    matched_xu = has_match_within_1km(ghost_coords, xu_species_coords, "latitude", "longitude", "lat", "lon")
+    ghost_only_df = ghost_coords[~matched_openaq & ~matched_xu]
+    
+    fig.add_trace(go.Scattergeo(
+        lon = ghost_only_df["longitude"],
+        lat = ghost_only_df["latitude"],
+        mode = "markers",
+        marker = dict(size = 10, symbol = "star", color = "green"),
+        name = "GHOST-only",
+    ))
+    
+    print(f"Length of ghost coords for {species}: {len(ghost_coords)}")
+    print(f"Length of gost only coords for {species}: {len(ghost_only_df)}")
 
     fig.update_layout(
         title = f"OpenAQ vs Xu et al. Station Comparison for {species}",
@@ -131,5 +233,5 @@ for species in ["pm25", "o3"]:
         )
     )
 
-    fig.write_html(f"figures/global_station_map_{species}.html")
+    fig.write_html(f"figures/global_station_map_{species}_ghost.html", include_plotlyjs = "cdn")
     fig.show()
