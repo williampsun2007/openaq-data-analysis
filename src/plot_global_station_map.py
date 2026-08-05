@@ -128,7 +128,7 @@ for species in ["pm25", "o3"]:
     xu_o3_df = load_rds(XU_O3_FILE)
     
     # Combine xu stations and drop duplicates
-    xu_coords = pd.concat([xu_pm25_df[["station_id", "lat", "lon"]], xu_o3_df[["station_id", "lat", "lon"]]]).drop_duplicates(subset = "station_id")
+        
     
     # Merge dfs so then every station can now also be identified by their coordinates
     co_located_df = co_located_ids.to_frame().merge(openaq_coords, left_on = "station_id", right_on = "location_id")
