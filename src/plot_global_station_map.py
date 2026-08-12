@@ -35,9 +35,9 @@ def station_corr(group):
 
 # Calculate closest station distance and see if its within 1 km
 def has_match_within_1km(points_df, ref_df, lat_col, lon_col, ref_lat_col, ref_lon_col):
-        tree = BallTree(np.radians(ref_df[[ref_lat_col, ref_lon_col]].values), metric = "haversine")
-        dist, _ = tree.query(np.radians(points_df[[lat_col, lon_col]].values), k = 1)
-        return (dist.flatten() * 6371) <= 1
+    tree = BallTree(np.radians(ref_df[[ref_lat_col, ref_lon_col]].values), metric = "haversine")
+    dist, _ = tree.query(np.radians(points_df[[lat_col, lon_col]].values), k = 1)
+    return (dist.flatten() * 6371) <= 1
 
 # Read files
 station_matches_df = pd.read_csv(STATION_MATCHES)
@@ -128,7 +128,7 @@ for species in ["pm25", "o3"]:
     xu_o3_df = load_rds(XU_O3_FILE)
     
     # Combine xu stations and drop duplicates
-        
+    xu_coords = pd.concat([xu_pm25_df[["station_id", "lat", "lon"]], xu_o3_df[["station_id", "lat", "lon"]]]).drop_duplicates(subset = "station_id")    
     
     # Merge dfs so then every station can now also be identified by their coordinates
     co_located_df = co_located_ids.to_frame().merge(openaq_coords, left_on = "station_id", right_on = "location_id")
@@ -223,7 +223,7 @@ for species in ["pm25", "o3"]:
     print(f"Length of gost only coords for {species}: {len(ghost_only_df)}")
 
     fig.update_layout(
-        title = f"OpenAQ vs Xu et al. Station Comparison for {species}",
+        title = f"OpenAQ vs Xu et al. vs GHOST Station Comparison for {species}",
         legend = dict(x = 0.01, y = 0.05, xanchor = "left", yanchor = "bottom"),
         hoverlabel = dict(bgcolor = "black", font = dict(color = "white")),
         geo = dict(
